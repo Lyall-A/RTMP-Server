@@ -1,5 +1,7 @@
 const net = require("net");
 
+const amf = require("./amf");
+
 const server = net.createServer();
 
 server.on("connection", socket => {
@@ -31,7 +33,7 @@ server.on("connection", socket => {
             C1Timestamp = packet.subarray(0, 4);
             C1RandomBytes = packet.subarray(8);
             handshake = 2;
-            log("Received C1, sending S0 and S1");
+            log("Received C1, sending S0 and S1 (handshake done)");
             return socket.write(Buffer.concat([
                 // S0
                 Buffer.from([0x03]),
@@ -93,10 +95,18 @@ server.on("connection", socket => {
         log(`Got message header - timestamp: ${messageHeader.timestamp}, length: ${messageHeader.messageLength}, type ID: ${messageHeader.messageTypeId}, stream ID: ${messageHeader.messageStreamId}`)
 
         if (messageHeader.messageTypeId == 1) {
-            // Set Chunk Size
+            // Set Chunk Size: https://rtmp.veriskope.com/docs/spec/#541set-chunk-size-1
             const oldChunkSize = chunkSize;
             chunkSize = chunkData.map((value, index) => index == 0 ? value & 0b01111111 : value).readUInt32BE(); // 31 bits??? what the sigma
-            log(`Changed chunk size from ${oldChunkSize} to ${chunkSize}`)
+            log(`Changed chunk size from ${oldChunkSize} to ${chunkSize}`);
+        }
+
+        if (messageHeader.messageTypeId == 20) {
+            const [commandName, transactionId, commandObject, optionalUserArguments] = amf.AMF0.decodeBuffer(chunkData);
+            log(`Received command message '${commandName}':`);
+            console.log(commandObject);
+
+            // TODO: reply with shit, ima need to make a function to make these message chunk things. fucking effort
         }
     });
 });
@@ -110,5 +120,6 @@ function buffer(length, func) {
 }
 
 function log(...msgs) {
+    // console.log(...msgs);
     console.log(`[${new Date().toUTCString()}]`, ...msgs);
 }
