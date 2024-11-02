@@ -1,5 +1,6 @@
 const net = require("net");
 
+const { buffer } = require("./utils");
 const amf = require("./amf");
 const rtmp = require("./rtmp");
 
@@ -34,6 +35,7 @@ server.on("connection", async socket => {
 
             if (commandName == "connect") {
                 console.log(`Client connecting to '${commandObject.tcUrl}'`);
+                socket.write(rtmp.encodeChunk(5, buffer(4, i => i.writeUInt32BE(2500000))));
             }
 
             // TODO: reply with shit, ima need to make a function to make these message chunk things. fucking effort

@@ -1,3 +1,4 @@
+const { buffer } = require("./utils");
 const amf = require("./amf");
 
 function handshake(socket) {
@@ -88,6 +89,40 @@ function decodeChunk(buffer, offset = 0) {
     }
 }
 
+function encodeChunk(messageType, data) {
+    const streamId = 3;
+    const format = 0;
+    const messageStreamId = 0;
+    const timestamp = 0;
+    
+    const basicHeader = Buffer.alloc(streamId <= 63 ? 1 : streamId <= 319 ? 2 : 3);
+    basicHeader[0] = ((format & 0b11) << 6);
+    if (streamId <= 63) {
+        basicHeader[0] = ((format & 0b11) << 6) | (streamId & 0b00111111);
+    } else
+    if (streamId <= 319) {
+        basicHeader[0] = ((format & 0b11) << 6);
+        basicHeader.writeUInt8(streamId - 64, 1);
+    } else {
+        basicHeader[0] = ((format & 0b11) << 6) | 0b00000001;
+        basicHeader.writeUInt16BE(streamId - 64, 1);
+    }
+
+    const messageHeader = Buffer.alloc(11); // type 0
+    if (format == 0) {
+        messageHeader.writeUIntBE(timestamp >= 0xFFFFFF ? 0xFFFFFF : timestamp, 0, 3); // Timestamp, unsure if this is epoch or what though
+        messageHeader.writeUIntBE(Buffer.byteLength(data), 3, 3);
+        messageHeader.writeUIntBE(messageType, 6, 1);
+        messageHeader.writeUInt32BE(messageStreamId, 7);
+    } else throw new Error(`Unknown format '${format}'`);
+
+    const extendedTimestamp = Buffer.alloc(timestamp > 0xFFFFFF ? 4 : 0);
+    if (timestamp >= 0xFFFFFF) extendedTimestamp.writeUInt32BE(timestamp);
+
+    const buffer = Buffer.concat([basicHeader, messageHeader, extendedTimestamp, Buffer.from(data)]);
+    return buffer;
+}
+
 function decodeCommandMessage(buffer, offset = 0) {
     const [commandName, transactionId, commandObject, optionalUserArguments] = new amf.AMF0Decode(buffer, offset);
     return {
@@ -100,12 +135,7 @@ function decodeCommandMessage(buffer, offset = 0) {
 
 module.exports = {
     handshake,
+    encodeChunk,
     decodeChunk,
     decodeCommandMessage
-}
-
-function buffer(length, func) {
-    const buffer = Buffer.alloc(length);
-    func?.(buffer);
-    return buffer;
 }
